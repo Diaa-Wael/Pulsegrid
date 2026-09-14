@@ -1,0 +1,35 @@
+name: Server smoke check
+
+# Render/Railway free tiers typically auto-deploy by connecting the
+# repo directly in their dashboard (root directory: /server) — no
+# GitHub Actions needed for the deploy itself. This workflow just
+# verifies the server boots cleanly on every push, so a broken server
+# doesn't reach whichever host you connect.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy-server.yml'
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: server
+        run: npm install
+
+      - name: Boot server for 3 seconds and check it doesn't crash
+        working-directory: server
+        run: |
+          timeout 3 node index.js || [ $? -eq 124 ]

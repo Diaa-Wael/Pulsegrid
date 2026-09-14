@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pulsegrid — live IoT heatmap</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      --bg: #0a0e14;
+      --panel: #10151d;
+      --line: #1f2a37;
+      --ink: #cfd8e3;
+      --ink-dim: #7c8896;
+      --accent: #35c9c9;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; }
+    #app { position: relative; width: 100vw; height: 100vh; }
+    canvas { display: block; }
+
+    .hud {
+      position: absolute;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .hud * { pointer-events: auto; }
+
+    .hud-top {
+      top: 20px; left: 20px; right: 20px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      position: absolute;
+    }
+
+    .brand { display: flex; flex-direction: column; gap: 2px; }
+    .brand-name { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .brand-sub { font-size: 12.5px; color: var(--ink-dim); }
+
+    .status {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--panel); border: 1px solid var(--line);
+      padding: 8px 12px; border-radius: 8px; font-size: 13px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #e5484d; transition: background 0.2s; }
+    .dot.live { background: #2ecc71; box-shadow: 0 0 8px #2ecc7188; }
+
+    .panel {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 10px; padding: 14px 16px;
+    }
+
+    .hud-bottom-left {
+      position: absolute; bottom: 20px; left: 20px;
+      display: flex; flex-direction: column; gap: 10px; width: 220px;
+    }
+
+    .metric-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+    .metric-label { color: var(--ink-dim); }
+    .metric-value { font-variant-numeric: tabular-nums; }
+
+    .sensor-toggle { display: flex; gap: 6px; }
+    .sensor-toggle button {
+      flex: 1; background: transparent; border: 1px solid var(--line); color: var(--ink-dim);
+      padding: 7px 8px; border-radius: 7px; font-size: 12.5px; cursor: pointer; transition: all 0.15s;
+    }
+    .sensor-toggle button.active { border-color: var(--accent); color: var(--accent); background: #35c9c91a; }
+    .sensor-toggle button:hover { color: var(--ink); }
+
+    .hud-bottom-right {
+      position: absolute; bottom: 20px; right: 20px;
+      width: 200px;
+    }
+    .legend-bar {
+      height: 12px; border-radius: 6px; margin: 8px 0 4px;
+      background: linear-gradient(90deg, #1e3a5f, #2ecc71, #f4c542, #e5484d);
+    }
+    .legend-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-dim); }
+
+    .tooltip {
+      position: absolute; display: none;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+      padding: 8px 10px; font-size: 12.5px; transform: translate(-50%, -120%);
+      white-space: nowrap;
+    }
+    .tooltip .id { color: var(--ink-dim); font-size: 11px; }
+
+    .hint {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      font-size: 12px; color: var(--ink-dim);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="hud hud-top">
+      <div class="brand">
+        <div class="brand-name">Pulsegrid</div>
+        <div class="brand-sub">live IoT heatmap · mock feed</div>
+      </div>
+      <div class="status panel">
+        <span class="dot" id="conn-dot"></span>
+        <span id="conn-label">connecting…</span>
+      </div>
+    </div>
+
+    <div class="hud hud-bottom-left panel">
+      <div class="metric-row"><span class="metric-label">FPS</span><span class="metric-value" id="fps">--</span></div>
+      <div class="metric-row"><span class="metric-label">Frame time</span><span class="metric-value" id="frametime">-- ms</span></div>
+      <div class="metric-row"><span class="metric-label">Updates/sec</span><span class="metric-value" id="ups">--</span></div>
+      <div class="metric-row"><span class="metric-label">Buildings</span><span class="metric-value" id="bcount">--</span></div>
+      <div class="sensor-toggle" id="sensor-toggle">
+        <button data-sensor="temp" class="active">Temp</button>
+        <button data-sensor="aqi">AQI</button>
+        <button data-sensor="traffic">Traffic</button>
+      </div>
+    </div>
+
+    <div class="hud hud-bottom-right panel">
+      <div class="metric-row"><span class="metric-label">Value scale</span></div>
+      <div class="legend-bar"></div>
+      <div class="legend-labels"><span>low</span><span>high</span></div>
+    </div>
+
+    <div class="tooltip panel" id="tooltip">
+      <div class="id" id="tooltip-id">bldg_0_0</div>
+      <div id="tooltip-value">-- </div>
+    </div>
+
+    <div class="hud hint">click a building to inspect · drag to orbit · scroll to zoom</div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
