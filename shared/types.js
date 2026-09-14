@@ -31,8 +31,10 @@
 
 /**
  * @typedef {Object} ValueUpdate
- * @property {number} index  - InstancedMesh instance index
- * @property {number} value  - sensor reading, 0-100
+ * @property {number} index    - InstancedMesh instance index
+ * @property {number} temp     - °C, see server/config.js SENSOR_RANGES.temp
+ * @property {number} aqi      - AQI units, see SENSOR_RANGES.aqi
+ * @property {number} traffic  - vehicles/min, see SENSOR_RANGES.traffic
  */
 
 export {};

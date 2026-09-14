@@ -78,7 +78,10 @@ export class App {
       if (hits.length > 0 && hits[0].instanceId !== undefined) {
         const info = this.cityMesh.getBuildingInfo(hits[0].instanceId);
         if (info) {
-          showTooltip({ id: info.id, value: info.value }, { x: event.clientX, y: event.clientY });
+          showTooltip(
+            { id: info.id, value: info.value, unit: info.unit },
+            { x: event.clientX, y: event.clientY }
+          );
           return;
         }
       }
@@ -87,9 +90,7 @@ export class App {
   }
 
   _onSensorChange(sensor) {
-    // The mock feed only produces one kind of value today; this hook
-    // is where you'd swap the active field/legend range once the
-    // server exposes multiple channels per building.
+    this.cityMesh?.setActiveSensor(sensor);
     store.set({ activeSensor: sensor });
     updateLegendForSensor(sensor);
   }

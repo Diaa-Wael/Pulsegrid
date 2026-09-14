@@ -12,11 +12,17 @@ export const CONFIG = {
   // building every tick; lower values simulate sparser real IoT traffic.
   UPDATE_FRACTION: 0.35,
 
-  // Value domain sensors report in (already normalized 0-100 so the
-  // client can map it straight onto a 0-1 color ramp).
-  MIN_VALUE: 0,
-  MAX_VALUE: 100,
+  // Each channel is simulated independently (own drifting hotspots,
+  // own baseline) and reported in its own real-world unit range. The
+  // client normalizes using these same ranges so switching the HUD
+  // toggle actually changes what's being visualized, not just the label.
+  SENSOR_RANGES: {
+    temp: { min: 10, max: 38, unit: '°C' },
+    aqi: { min: 0, max: 150, unit: 'AQI' },
+    traffic: { min: 0, max: 100, unit: 'veh/min' },
+  },
 
-  // Number of simultaneous drifting "hotspots" (e.g. heat clusters).
+  // Number of simultaneous drifting "hotspots" per channel (e.g. heat
+  // clusters, pollution plumes, traffic jams).
   HOTSPOT_COUNT: 3,
 };

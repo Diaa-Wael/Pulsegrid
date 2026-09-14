@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import { createColorRampTexture } from './colorRamp.js';
+import { SENSOR_RANGES, SENSOR_ORDER } from '../config/sensors.js';
 
 import vertexShader from '../shaders/heatmap.vert.glsl?raw';
 import fragmentShader from '../shaders/heatmap.frag.glsl?raw';
 
-const MIN_VALUE = 0;
-const MAX_VALUE = 100;
 const CELL_SPACING = 1.2;
 
 /**
@@ -14,6 +13,13 @@ const CELL_SPACING = 1.2;
  * InstancedBufferAttribute — no geometry rebuilds, no per-instance
  * Object3D, no material swaps. This is the piece that makes 60 FPS at
  * high update rates realistic.
+ *
+ * The server streams all three sensor channels (temp/aqi/traffic) for
+ * every updated building every tick. This class keeps a raw real-unit
+ * Float32Array per channel and only ever pushes the *currently active*
+ * channel into the GPU-facing `value` attribute — so switching the HUD
+ * toggle recolors the whole grid using data that was already there,
+ * with no network round-trip.
  */
 export class CityMesh {
   /**
@@ -24,6 +30,7 @@ export class CityMesh {
   constructor(scene, gridSize, buildings) {
     this.gridSize = gridSize;
     this.count = gridSize * gridSize;
+    this.activeSensor = 'temp';
 
     const geometry = new THREE.BoxGeometry(0.8, 1, 0.8);
 
@@ -38,13 +45,21 @@ export class CityMesh {
     this.mesh = new THREE.InstancedMesh(geometry, this.material, this.count);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    // Per-instance "value" attribute (0-1, normalized), read by the
-    // vertex shader and interpolated to the fragment shader.
+    // Per-instance "value" attribute (0-1, normalized for whichever
+    // sensor is active), read by the vertex shader.
     this.valueAttribute = new THREE.InstancedBufferAttribute(new Float32Array(this.count), 1);
     this.valueAttribute.setUsage(THREE.DynamicDrawUsage);
     geometry.setAttribute('value', this.valueAttribute);
 
+    // Raw, real-unit values per channel — the actual source of truth.
+    this.raw = {};
+    for (const sensor of SENSOR_ORDER) {
+      const midpoint = (SENSOR_RANGES[sensor].min + SENSOR_RANGES[sensor].max) / 2;
+      this.raw[sensor] = new Float32Array(this.count).fill(midpoint);
+    }
+
     this._placeBuildings(buildings);
+    this._recomputeActiveAttribute();
 
     scene.add(this.mesh);
 
@@ -65,35 +80,72 @@ export class CityMesh {
       dummy.updateMatrix();
 
       this.mesh.setMatrixAt(b.index, dummy.matrix);
-      this.valueAttribute.array[b.index] = 0.2; // neutral starting value
     }
 
     this.mesh.instanceMatrix.needsUpdate = true;
-    this.valueAttribute.needsUpdate = true;
   }
 
-  /**
-   * Applies a flat Float32Array of [index0, value0, index1, value1, ...]
-   * pairs (as produced by dataParser.worker.js) directly into the
-   * attribute buffer, then flags a single needsUpdate for the whole
-   * batch rather than one GPU upload per value.
-   */
-  applyUpdates(flatPairs) {
+  _normalize(sensor, rawValue) {
+    const { min, max } = SENSOR_RANGES[sensor];
+    return Math.min(1, Math.max(0, (rawValue - min) / (max - min)));
+  }
+
+  /** Rewrites the whole GPU-facing attribute from `raw[activeSensor]`. Used on sensor switch. */
+  _recomputeActiveAttribute() {
     const arr = this.valueAttribute.array;
-    for (let i = 0; i < flatPairs.length; i += 2) {
-      const index = flatPairs[i];
-      const rawValue = flatPairs[i + 1];
-      const normalized = (rawValue - MIN_VALUE) / (MAX_VALUE - MIN_VALUE);
-      arr[index] = Math.min(1, Math.max(0, normalized));
+    const rawChannel = this.raw[this.activeSensor];
+    for (let i = 0; i < this.count; i++) {
+      arr[i] = this._normalize(this.activeSensor, rawChannel[i]);
     }
     this.valueAttribute.needsUpdate = true;
   }
 
-  /** Returns the building + current value at a given instance index, for the tooltip. */
+  /** Switches which channel drives the shader and immediately recolors the whole grid. */
+  setActiveSensor(sensor) {
+    if (!SENSOR_RANGES[sensor] || sensor === this.activeSensor) return;
+    this.activeSensor = sensor;
+    this._recomputeActiveAttribute();
+  }
+
+  /**
+   * Applies a flat Float32Array of [index, temp, aqi, traffic, ...]
+   * quads (as produced by dataParser.worker.js). Updates all three raw
+   * channels every time (so switching sensors later has fresh data
+   * immediately), but only touches the GPU attribute for whichever
+   * channel is currently active, and does one needsUpdate per batch.
+   */
+  applyUpdates(flatQuads) {
+    const STRIDE = 4;
+    const activeArr = this.valueAttribute.array;
+
+    for (let i = 0; i < flatQuads.length; i += STRIDE) {
+      const index = flatQuads[i];
+      const temp = flatQuads[i + 1];
+      const aqi = flatQuads[i + 2];
+      const traffic = flatQuads[i + 3];
+
+      this.raw.temp[index] = temp;
+      this.raw.aqi[index] = aqi;
+      this.raw.traffic[index] = traffic;
+
+      activeArr[index] = this._normalize(
+        this.activeSensor,
+        this.activeSensor === 'temp' ? temp : this.activeSensor === 'aqi' ? aqi : traffic
+      );
+    }
+
+    this.valueAttribute.needsUpdate = true;
+  }
+
+  /** Returns the building + current active-sensor reading at a given instance index, for the tooltip. */
   getBuildingInfo(index) {
     const building = this.indexToBuilding.get(index);
     if (!building) return null;
-    const normalized = this.valueAttribute.array[index];
-    return { ...building, value: normalized * (MAX_VALUE - MIN_VALUE) + MIN_VALUE };
+    return {
+      ...building,
+      sensor: this.activeSensor,
+      unit: SENSOR_RANGES[this.activeSensor].unit,
+      value: this.raw[this.activeSensor][index],
+    };
   }
 }

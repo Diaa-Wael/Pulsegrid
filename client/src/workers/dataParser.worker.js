@@ -1,8 +1,8 @@
 // Runs entirely off the main thread. Receives raw JSON strings from
 // socketClient.js, parses them, and posts back a flat Float32Array of
-// [index0, value0, index1, value1, ...] pairs using a transferable
-// buffer (zero-copy) so the main thread never blocks on JSON.parse
-// or object allocation for large update batches.
+// [index0, temp0, aqi0, traffic0, index1, temp1, aqi1, traffic1, ...]
+// quads using a transferable buffer (zero-copy) so the main thread
+// never blocks on JSON.parse or object allocation for large batches.
 
 self.onmessage = (event) => {
   const raw = event.data;
@@ -24,11 +24,15 @@ self.onmessage = (event) => {
 
   if (parsed.type === 'update') {
     const updates = parsed.updates || [];
-    const flat = new Float32Array(updates.length * 2);
+    const STRIDE = 4; // index, temp, aqi, traffic
+    const flat = new Float32Array(updates.length * STRIDE);
 
     for (let i = 0; i < updates.length; i++) {
-      flat[i * 2] = updates[i].index;
-      flat[i * 2 + 1] = updates[i].value;
+      const u = updates[i];
+      flat[i * STRIDE] = u.index;
+      flat[i * STRIDE + 1] = u.temp;
+      flat[i * STRIDE + 2] = u.aqi;
+      flat[i * STRIDE + 3] = u.traffic;
     }
 
     // Transfer ownership of the buffer instead of copying it.
